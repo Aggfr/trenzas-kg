@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initMobileNav();
   initGalleryControls();
   initContactForm();
+  initHeroTracking();
 });
 
 /* ---------- Menú móvil ---------- */
@@ -27,6 +28,74 @@ function initMobileNav() {
       nav.classList.remove("is-open");
       toggle.setAttribute("aria-expanded", "false");
     });
+  });
+}
+
+/* ---------- Tracking del hero (video scrubbing: el fotograma sigue al cursor) ---------- */
+function initHeroTracking() {
+  const hero = document.querySelector(".hero");
+  const video = document.querySelector(".hero__video-scrub");
+
+  if (!hero || !video) return;
+
+  const CENTER_RATIO = 0.5;
+  const EASE = 0.12; // suavizado del movimiento, independiente de la frecuencia del mousemove
+
+  let targetRatio = CENTER_RATIO;
+  let currentRatio = CENTER_RATIO;
+  let metadataReady = video.readyState >= 1; // HAVE_METADATA
+  let seeking = false;
+  let pendingRatio = null;
+
+  video.addEventListener("loadedmetadata", () => {
+    metadataReady = true;
+  });
+
+  // Evita "inundar" de seeks al video: si llega un nuevo objetivo mientras
+  // aun se esta buscando el anterior, se guarda y se aplica al terminar.
+  const seekTo = (ratio) => {
+    if (!metadataReady || !video.duration) return;
+    const clamped = Math.min(Math.max(ratio, 0), 1);
+    const targetTime = clamped * video.duration;
+    if (seeking) {
+      pendingRatio = clamped;
+      return;
+    }
+    seeking = true;
+    video.currentTime = targetTime;
+  };
+
+  video.addEventListener("seeked", () => {
+    seeking = false;
+    if (pendingRatio !== null) {
+      const next = pendingRatio;
+      pendingRatio = null;
+      seekTo(next);
+    }
+  });
+
+  const animate = () => {
+    currentRatio += (targetRatio - currentRatio) * EASE;
+    seekTo(currentRatio);
+    requestAnimationFrame(animate);
+  };
+
+  requestAnimationFrame(animate);
+
+  // En tactil (sin raton real) se queda en el fotograma central (poster)
+  const hasMouse = window.matchMedia("(pointer: fine)").matches;
+  if (!hasMouse) return;
+
+  hero.addEventListener("mousemove", (event) => {
+    const rect = hero.getBoundingClientRect();
+    const relX = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
+    // Cursor a la izquierda -> ultimo fotograma (ella girada a la izquierda);
+    // cursor a la derecha -> primer fotograma (ella girada a la derecha).
+    targetRatio = 1 - relX;
+  });
+
+  hero.addEventListener("mouseleave", () => {
+    targetRatio = CENTER_RATIO;
   });
 }
 
